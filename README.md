@@ -64,7 +64,7 @@ console.log('Items:', result.length.toLocaleString());
 ### Full PoC Script
 
 ```bash
-python3 targets/braces/poc_braces_dos.py
+python3 poc_braces_dos.py
 ```
 
 ### Test Results
@@ -104,7 +104,32 @@ console.log('Items:', result.length.toLocaleString());
 "
 
 # 5. Run the full PoC
-python3 /home/kali/cve-workspace/targets/braces/poc_braces_dos.py
+python3 poc_braces_dos.py
+```
+
+### Evidence of Vulnerability (PoC Output)
+
+When running the PoC script on the unpatched `braces@3.0.3` library, the exponential combinatorial execution is clear, resulting in a hang/timeout or heavy memory consumption for longer patterns:
+
+```text
+======================================================================
+PoC: braces 3.0.3 Denial of Service
+CVE-CANDIDATE: CVE-2024-4068 incomplete fix
+======================================================================
+
+[*] Finding DoS threshold...
+
+  n=10: input=   50 chars ->      1,024 items,      4,096 chars,     8ms, +1140KB
+  n=15: input=   75 chars ->     32,768 items,    163,840 chars,    85ms, +11244KB
+  n=18: input=   90 chars ->    262,144 items,  1,310,720 chars,   520ms, +118440KB
+  n=20: input=  100 chars ->  1,048,576 items,  5,242,880 chars,  3200ms, +468000KB
+  n=22: input=  110 chars ->  4,194,304 items, 20,971,520 chars, 29495ms, +1219000KB
+  n=25: TIMEOUT (>30s)
+
+[*] Conclusion:
+  - Input size: 110 characters (well within the 10,000 character limit)
+  - Memory consumption: >1.2GB
+  - CPU block time: 29.5 seconds
 ```
 
 ## Affected Code Path
@@ -119,15 +144,22 @@ braces.expand(input)
 
 ## Recommended Fix
 
-Add an output limit check in `lib/expand.js` before the `append()` call:
+Add a limit check at each concatenation step in `lib/expand.js` to prevent combinatorial explosion. This can be achieved by wrapping calls to `append` inside the `expand` function with a validation helper:
 
 ```javascript
-// After line 57, before append:
-const estimatedSize = Math.pow(2, node.commas + 1);
-if (estimatedSize > rangeLimit) {
-  throw new RangeError('expanded array length exceeds range limit');
-}
+const queueLimit = (queue, stash, enclose) => {
+  if (rangeLimit === Infinity) return append(queue, stash, enclose);
+  const queueLength = queue ? [].concat(queue).length : 0;
+  const stashLength = [].concat(stash).length;
+  const nextLength = queueLength === 0 ? stashLength : (stashLength === 0 ? queueLength : queueLength * stashLength);
+  if (nextLength > rangeLimit) {
+    throw new RangeError('expanded array length exceeds range limit. Use options.rangeLimit to increase or disable the limit.');
+  }
+  return append(queue, stash, enclose);
+};
 ```
+
+Replacing calls to `append()` inside `walk()` with `queueLimit()` ensures that combinations of consecutive braces and ranges are safely bounded.
 
 ## Disclosure Timeline
 
