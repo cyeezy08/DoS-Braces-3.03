@@ -10,6 +10,14 @@
 
 ---
 
+## The Story
+
+`braces` powers webpack, vitest, jest, eslint and chokidar — some of the most-installed tooling on the planet. It got patched for a DoS (CVE-2024-4068) by capping input *length*. But the patch only guards numeric ranges like `{1..1000}`.
+
+I bypassed it with 110 characters: `'{a,b}'.repeat(22)` → 4.2 million items → 1.2GB+ RAM → a 10-second frozen event loop.
+
+The bug the patch fixed was the symptom. The root cause — combinatorial output explosion with no cap — was still sitting there. This is what a CVE-candidate looks like: an incomplete fix that leaves a HIGH severity DoS live in the world's most popular build toolchain.
+
 ## Vulnerability
 
 The `braces` library is vulnerable to denial of service through uncontrolled resource consumption when processing comma-separated brace expansion patterns.
